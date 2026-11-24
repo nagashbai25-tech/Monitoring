@@ -1,0 +1,90 @@
+
+groups:
+  - name: availability
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Цель {{ $labels.job }} недоступна"
+          description: "Prometheus не может забрать метрики у {{ $labels.instance }} уже минуту."
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL недоступен"
+          description: "postgres-exporter не может подключиться к базе."
+
+      - alert: NginxDown
+        expr: nginx_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "nginx недоступен"
+          description: "nginx-exporter не получает stub_status от nginx."
+
+      - alert: ContainerDown
+        expr: time() - container_last_seen{name=~"apps|database|nginxs"} > 60
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Контейнер {{ $labels.name }} не виден больше минуты"
+
+  - name: application
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(flask_http_request_total{status=~"5.."}[5m]))
+            / sum(rate(flask_http_request_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Больше 5% запросов заканчиваются ошибкой 5xx"
+          description: "Доля ошибок за 5 минут: {{ $value | humanizePercentage }}."
+
+      - alert: SlowRequests
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(flask_http_request_duration_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "95% запросов медленнее 1 секунды"
+          description: "p95 задержки за 5 минут: {{ $value | humanizeDuration }}."
+
+  - name: infrastructure
+    rules:
+      - alert: HostHighCPU
+        expr: 100 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Загрузка CPU выше 85% уже 10 минут"
+
+      - alert: HostHighMemory
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Занято больше 90% памяти"
+
+      - alert: HostLowDisk
+        expr: |
+          node_filesystem_avail_bytes{mountpoint="/", fstype!="rootfs"}
+            / node_filesystem_size_bytes{mountpoint="/", fstype!="rootfs"} * 100 < 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "На диске осталось меньше 10% места"

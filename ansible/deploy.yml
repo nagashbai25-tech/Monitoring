@@ -1,0 +1,136 @@
+- name: Deploy MiniBlog with monitoring
+  hosts: prod
+  become: true   
+
+  tasks:
+    
+    - name: Install packages needed for Docker repository
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - python3-debian   
+        state: present
+        update_cache: true
+
+    - name: Add Docker repository (ключ скачивается автоматически)
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_distribution_release }}"
+        components: stable
+    
+        architectures: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+        update_cache: true
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Make sure Docker is running and enabled
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add user to docker group
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true   
+
+    - name: Create project directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ app_dir }}"
+        - "{{ app_dir }}/nginx"
+
+    - name: Copy compose files
+      ansible.builtin.copy:
+        src: "../{{ item }}"
+        dest: "{{ app_dir }}/{{ item }}"
+        mode: "0644"
+      loop:
+        - docker-compose.product.yml
+        - docker-compose.monitoring.yml
+
+    - name: Copy nginx config
+      ansible.builtin.copy:
+        src: ../nginx/nginx.production.conf
+        dest: "{{ app_dir }}/nginx/nginx.production.conf"
+        mode: "0644"
+      notify: Restart nginx
+
+    - name: Copy static files
+      ansible.builtin.copy:
+        src: ../static/
+        dest: "{{ app_dir }}/static/"
+        mode: "0644"
+        directory_mode: "0755"
+
+    - name: Copy monitoring configs (Prometheus, Grafana)
+      ansible.builtin.copy:
+        src: ../monitoring/
+        dest: "{{ app_dir }}/monitoring/"
+        mode: "0644"
+        directory_mode: "0755"
+      notify: Restart prometheus
+
+    - name: Render .env from template
+      ansible.builtin.template:
+        src: templates/env.j2
+        dest: "{{ app_dir }}/.env"
+        mode: "0600"
+      no_log: true   # не печатать пароли в выводе
+
+    # ---------- Запуск ----------
+    - name: Log in to GHCR (only if token is set)
+      community.docker.docker_login:
+        registry_url: ghcr.io
+        username: "{{ vault_ghcr_user }}"
+        password: "{{ vault_ghcr_token }}"
+      when: vault_ghcr_token is defined
+      no_log: true
+
+    - name: Pull images and start all containers
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}"
+        files:
+          - docker-compose.product.yml
+          - docker-compose.monitoring.yml
+        pull: always
+        state: present
+
+  handlers:
+    
+    
+    - name: Restart nginx
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}"
+        files:
+          - docker-compose.product.yml
+          - docker-compose.monitoring.yml
+        services: [nginx]
+        state: restarted
+
+    - name: Restart prometheus
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}"
+        files:
+          - docker-compose.product.yml
+          - docker-compose.monitoring.yml
+        services: [prometheus]
+        state: restarted

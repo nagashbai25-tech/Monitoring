@@ -1,0 +1,5 @@
+
+app_dir: /opt/miniblog
+db_user: blog
+db_name: blog
+grafana_admin_user: admin

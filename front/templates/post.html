@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>{{ post.title }}</h1>
+  <div class="meta">{{ post.created_at.strftime('%d.%m.%Y %H:%M') }}</div>
+  <p>{{ post.body }}</p>
+
+  <a href="{{ url_for('edit_post', post_id=post.id) }}">Редактировать</a> ·
+  <form method="post" action="{{ url_for('delete_post', post_id=post.id) }}" style="display:inline"
+        onsubmit="return confirm('Удалить пост?');">
+    <button type="submit">Удалить</button>
+  </form>
+
+  <h3>Комментарии ({{ post.comments|length }})</h3>
+  {% for c in post.comments %}
+    <div class="comment">
+      <strong>{{ c.author }}</strong> <span class="meta">{{ c.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+      <p>{{ c.body }}</p>
+    </div>
+  {% endfor %}
+
+  <form method="post" action="{{ url_for('add_comment', post_id=post.id) }}">
+    <input type="text" name="author" placeholder="Ваше имя" required>
+    <textarea name="body" rows="3" placeholder="Комментарий" required></textarea>
+    <button type="submit">Отправить</button>
+  </form>
+{% endblock %}

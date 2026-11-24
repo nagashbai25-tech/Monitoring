@@ -1,0 +1,23 @@
+# секреты
+.env
+cert/*
+.vault_pass
+*.vault_pass
+ansible/group_vars/prod/vault.yml.decrypted
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+
+
+instance/
+*.db
+
+# редакторы / ОС
+.idea/
+.vscode/
+.DS_Store
+docs/MONITTORING.md 
